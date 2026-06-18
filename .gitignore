@@ -1,0 +1,22 @@
+# 가상환경 (절대 올리지 않음 — 용량 크고 PC마다 다름)
+.venv/
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# 로그 파일
+*.log
+
+# 개발 중 테스트용 임시 스크립트 (제출 불필요)
+compare.py
+bench_llm.py
+run_tests.py
+run_model_test.py
+
+# 주피터 체크포인트
+.ipynb_checkpoints/
+
+# OS 파일
+Thumbs.db
+.DS_Store

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+streamlit
+requests
+pydantic
+transformers<5
+torch
+sentencepiece
+nest_asyncio
+ipykernel
