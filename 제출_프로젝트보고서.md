@@ -26,7 +26,7 @@
 
 ### 2.2 3가지 방식 비교 + Gemini 평가 (Streamlit)
 같은 입력을 빠름(t5)·정확(Qwen)·최고(Gemini)로 동시에 요약하고, Gemini가 항목별로 채점·비교한다.
-![비교 화면](비교화면.png)
+![alt text](image-2.png)
 
 ---
 
