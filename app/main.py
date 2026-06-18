@@ -12,8 +12,15 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import verify_api_key
-from app.schemas import SummarizeRequest, SummarizeResponse
-from app.model_service import load_model, predict, T5_MODEL_NAME, LLM_MODEL_NAME
+from app.schemas import (
+    SummarizeRequest, SummarizeResponse,
+    EvaluateRequest, EvaluateResponse,
+    VerifyKeyRequest, VerifyKeyResponse,
+)
+from app.model_service import (
+    load_model, predict, evaluate, verify_gemini_key,
+    T5_MODEL_NAME, LLM_MODEL_NAME, CLOUD_MODEL_NAME, EVAL_MODEL_NAME,
+)
 
 # ===== 앱 생성 =====
 app = FastAPI(
@@ -53,8 +60,10 @@ async def health_check():
     return {
         "status": "ok" if summarizer is not None else "loading",
         "model_loaded": summarizer is not None,
-        "fast_model": T5_MODEL_NAME,      # 빠름 모드 (서버 시작 시 로드)
-        "accurate_model": LLM_MODEL_NAME,  # 정확 모드 (첫 요청 시 로드)
+        "fast_model": T5_MODEL_NAME,        # 빠름 모드 (서버 시작 시 로드)
+        "accurate_model": LLM_MODEL_NAME,   # 정확 모드 (첫 요청 시 로드)
+        "cloud_model": CLOUD_MODEL_NAME,    # 최고 모드 (Gemini)
+        "eval_model": EVAL_MODEL_NAME,      # 평가 모드 (Gemini Pro)
     }
 
 
@@ -78,9 +87,42 @@ async def summarize(
             request.mode,
             request.max_length,
             request.min_length,
+            request.gemini_api_key,
         )
     except Exception as e:
         # 모델 추론 중 오류 → 500
         raise HTTPException(status_code=500, detail=f"요약 처리 실패: {str(e)}")
 
     return SummarizeResponse(**result)
+
+
+@app.post("/verify_key", response_model=VerifyKeyResponse, tags=["System"])
+async def verify_key(
+    request: VerifyKeyRequest,
+    user: str = Depends(verify_api_key),
+):
+    """Gemini API 키가 유효한지 확인합니다."""
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(inference_executor, verify_gemini_key, request.gemini_api_key)
+    return VerifyKeyResponse(**result)
+
+
+@app.post("/evaluate", response_model=EvaluateResponse, tags=["Evaluate"])
+async def evaluate_summaries(
+    request: EvaluateRequest,
+    user: str = Depends(verify_api_key),   # 인증 필요
+):
+    """세 방식의 요약을 Gemini 로 평가합니다 (API Key + GEMINI_API_KEY 필요)."""
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            inference_executor,
+            evaluate,
+            request.text,
+            request.summaries,
+            request.gemini_api_key,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"평가 처리 실패: {str(e)}")
+
+    return EvaluateResponse(**result)

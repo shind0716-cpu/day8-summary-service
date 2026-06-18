@@ -13,13 +13,20 @@
 | **도메인 / 태스크** | 텍스트 요약 (`summarization`) |
 | **서비스명** | 한국어 회의 메모 요약 서비스 |
 | **설명** | 회의 메모·공지문·업무 메일 등 긴 한국어 글을 입력하면 핵심을 짧게 요약 |
-| **구성** | FastAPI(백엔드) + Streamlit(프론트엔드) + Hugging Face 모델 |
-| **요약 모드** | **빠름**(t5-base, 수 초) / **정확**(Qwen2.5-3B LLM, 1~3분) 2종 |
-| **인증** | API Key (`X-API-Key` 헤더, 값: `my-secret-key`) |
+| **구성** | FastAPI(백엔드) + Streamlit(프론트엔드) + 로컬 모델 + Gemini API |
+| **요약 모드** | **빠름**(t5-base) / **정확**(Qwen2.5-3B) / **최고**(Gemini 2.5 Flash) 3종 |
+| **비교·평가** | 한 입력을 3가지 방식으로 동시 요약 → **Gemini가 항목별 채점·비교** |
+| **인증** | API Key (`X-API-Key` 헤더, 값: `my-secret-key`) + Gemini API Key(최고/평가용, 무료 등급) |
 
 ---
 ## 2. 모델 시연 캡쳐
+
+### 2.1 단일 요약 (Swagger / 초기 화면)
 ![alt text](image.png)
+
+### 2.2 3가지 방식 비교 + Gemini 평가 (Streamlit)
+같은 입력을 빠름(t5)·정확(Qwen)·최고(Gemini)로 동시에 요약하고, Gemini가 항목별로 채점·비교한다.
+![비교 화면](비교화면.png)
 
 ---
 
@@ -35,14 +42,34 @@
 | 4 | `num_beams=6`, `length_penalty=2.0` | 문장이 중간에 잘리지 않고 더 충실하게 |
 | 5 | `t5-small` → `t5-base` | 품질 향상 (sentencepiece 설치로 tokenizer 문제 해결됨) |
 | 6 | **입력 길이 기반 적응형 길이** | 짧은 글은 짧게, 긴 글은 길게 (환각 방지) |
-| 7 | **빠름/정확 2모드 도입** | t5의 한계(아래)를 LLM으로 보완 |
+| 7 | **빠름/정확 2모드 도입** | t5의 한계(아래)를 로컬 LLM으로 보완 |
+| 8 | **최고 모드(클라우드 LLM) 추가** | CPU에서 느린 로컬 LLM 대신, 빠르고 품질 좋은 클라우드 LLM |
+| 9 | Claude → **Google Gemini 로 교체** | Claude는 유료 크레딧 필요. Gemini는 **무료 등급**으로 사용 가능 |
+| 10 | **3가지 비교 + Gemini 평가 UI** | 한 입력을 3방식으로 동시 요약하고 Gemini가 항목별 채점·비교 |
 
 ### t5 요약 모델의 한계 (실험으로 확인)
 t5 계열 요약 모델은 **신문기사로 학습**되어 "중요한 내용이 맨 앞"이라고 가정한다(lead bias). 그래서 **회의록처럼 결론이 맨 뒤에 오는 글에서는 핵심 결정을 놓친다.**
 
 > **증거 실험:** 같은 결론 문장을 글 맨 뒤 → 맨 앞으로 위치만 옮겼더니, 맨 앞일 때만 요약에 포함되었다. 즉 모델이 *중요도*가 아니라 *위치*로 요약함을 확인했다.
 
-이 한계 때문에 **지시형 LLM(Qwen2.5-3B)** 을 "정확 모드"로 추가했다. LLM은 "결정사항 중심으로 요약하라"는 지시를 이해해 위치와 무관하게 핵심을 잡는다.
+이 한계 때문에 **지시형 LLM(Qwen2.5-3B)** 을 "정확 모드"로, **클라우드 LLM(Gemini)** 을 "최고 모드"로 추가했다. 이들은 "결정사항 중심으로 요약하라"는 지시를 이해해 위치와 무관하게 핵심을 잡는다.
+
+### 비교 + 평가 결과 (실측)
+같은 회의록(217자)을 3가지 방식으로 요약하고 **Gemini가 4개 항목(각 5점)으로 채점**한 실제 결과:
+
+| 방식 (모델) | 글자수 | 요약율 | 소요 | 정확성 | 핵심포착 | 간결성 | 자연스러움 |
+|---|---|---|---|---|---|---|---|
+| ⚡ 빠름 (t5-base) | 113자 | 52% | 8.4초 | 5 | **1** | 3 | 5 |
+| 🎯 정확 (Qwen2.5-3B) | 109자 | 50% | 105.6초 | 5 | **5** | 5 | 4 |
+| 🏆 최고 (Gemini 2.5 Flash) | 123자 | 57% | **2.3초** | 4 | **5** | 3 | 5 |
+
+**Gemini 종합 평가 → 🏅 최고: 정확(Qwen)**
+> "원문의 핵심인 최종 결정 사항(출시일 2주 연기, 사전 예약 이벤트 진행)을 정확히 포착하면서도, 배경이 된 개발팀·디자인팀 업데이트와 마케팅팀 제안을 간결하게 잘 요약했다. 간결성과 핵심포착에서 가장 뛰어남."
+
+**읽는 법:**
+- t5(빠름)는 **핵심포착 1점** — 결론(결정사항)을 놓치는 lead bias가 점수로 드러남.
+- Gemini(최고)는 **2.3초**로 가장 빠르면서 품질도 우수(로컬 Qwen은 CPU라 105초).
+- 즉 "빠름=속도, 정확=무료지만 느림, 최고=빠르고 좋지만 키 필요"의 트레이드오프가 한눈에 보인다.
 
 ---
 
@@ -54,7 +81,7 @@ project_01/
 │   ├── __init__.py          # app 폴더를 파이썬 패키지로 인식
 │   ├── auth.py              # API Key 인증
 │   ├── schemas.py           # 입력/출력 검증 (Pydantic)
-│   ├── model_service.py     # 모델 로드 + 요약 (빠름/정확 2모드)
+│   ├── model_service.py     # 모델 로드 + 요약 (빠름/정확/최고 3모드 + Gemini 평가)
 │   └── main.py              # FastAPI 서버
 ├── frontend/
 │   └── app.py               # Streamlit UI
@@ -112,8 +139,8 @@ class SummarizeResponse(BaseModel):
     model_name: str           # 사용한 모델
 ```
 
-### 4.3 `app/model_service.py` — 모델 로드 + 요약 (2모드)
-빠름(t5)은 서버 시작 시 로드, 정확(LLM)은 무거우므로 첫 요청 때 지연 로드한다.
+### 4.3 `app/model_service.py` — 모델 로드 + 요약 (3모드: t5 / Qwen / Gemini)
+빠름(t5)은 서버 시작 시 로드, 정확(Qwen)은 첫 요청 때 지연 로드, 최고(Gemini)는 API로 호출한다.
 
 ```python
 import torch
@@ -121,6 +148,8 @@ from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 
 T5_MODEL_NAME = "eenzeenee/t5-base-korean-summarization"   # 빠름
 LLM_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"                # 정확
+CLOUD_MODEL_NAME = "gemini-2.5-flash"                      # 최고 (Gemini, 무료)
+EVAL_MODEL_NAME = "gemini-2.5-flash"                       # 평가 (Gemini)
 PREFIX = "summarize: "        # t5 모델의 공식 접두어 (요약 품질↑)
 _llm = None                   # 정확 모드 LLM 캐시 (지연 로드)
 
@@ -175,17 +204,40 @@ def _summarize_llm(text):
     return tok.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
 
 
-def predict(model, text, mode="fast", max_length=None, min_length=None):
-    """mode 에 따라 t5 또는 LLM 으로 요약하고 dict 반환."""
-    if mode == "accurate":
+# 최고 모드: Google Gemini (API 키는 화면 입력 또는 환경변수)
+def _get_gemini(api_key=None):
+    from google import genai
+    import os
+    if api_key:
+        return genai.Client(api_key=api_key)
+    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        raise RuntimeError("Gemini API 키가 필요합니다(사이드바 입력 또는 환경변수).")
+    return genai.Client(api_key=key)
+
+
+def _summarize_cloud(text, api_key=None):
+    from google.genai import types
+    client = _get_gemini(api_key)
+    resp = client.models.generate_content(
+        model=CLOUD_MODEL_NAME, contents=f"다음 글을 요약해줘:\n\n{text}",
+        config=types.GenerateContentConfig(system_instruction=SUMMARY_SYSTEM))
+    return (resp.text or "").strip()
+
+
+def predict(model, text, mode="fast", max_length=None, min_length=None, api_key=None):
+    """mode 에 따라 t5 / Qwen / Gemini 로 요약하고 dict 반환."""
+    if mode == "cloud":
+        summary, model_name = _summarize_cloud(text, api_key), CLOUD_MODEL_NAME
+    elif mode == "accurate":
         summary, model_name = _summarize_llm(text), LLM_MODEL_NAME
     else:
         summary, model_name = _summarize_t5(model, text, max_length, min_length), T5_MODEL_NAME
-    return {
-        "success": True, "summary": summary,
-        "original_length": len(text), "summary_length": len(summary),
-        "model_name": model_name,
-    }
+    return {"success": True, "summary": summary,
+            "original_length": len(text), "summary_length": len(summary),
+            "model_name": model_name}
+
+# 그 외: evaluate(text, summaries) — Gemini가 4개 항목 채점(JSON), verify_gemini_key() — 키 확인
 ```
 
 ### 4.4 `app/main.py` — FastAPI 서버
@@ -400,7 +452,8 @@ GPU 서버(LLM 속도), Docker 패키징, 클라우드 배포, API Key의 환경
 ## 11. 프로젝트 회고
 
 - **가장 큰 배움:** "모델이 결과를 내놓는다 ≠ 좋은 결과다." t5 요약 모델이 회의록 결론을 놓치는 현상을 보고, *왜* 그런지(신문 학습으로 인한 lead bias) 실험(문장 위치 바꾸기)으로 직접 확인한 과정이 가장 인상 깊었다.
-- **트레이드오프 경험:** 품질을 높이려 LLM을 도입했지만 CPU에서 매우 느려, 결국 "빠름/정확"을 사용자가 고르는 2모드 구조로 풀었다. 정답이 하나가 아니라 상황에 맞는 균형이 중요함을 배웠다.
+- **트레이드오프 경험:** 품질을 높이려 로컬 LLM(Qwen)을 도입했지만 CPU에서 매우 느려, 빠르고 무료인 클라우드 LLM(Gemini)을 "최고" 모드로 추가했다. 결국 빠름(속도)·정확(무료 로컬)·최고(빠르고 좋지만 키 필요) 3모드를 사용자가 고르고, Gemini가 셋을 채점·비교하는 구조로 풀었다. 정답이 하나가 아니라 상황에 맞는 균형이 중요함을 배웠다.
+- **유료 → 무료 전환:** 처음엔 Claude(Anthropic)를 썼으나 크레딧(결제)이 필요해, 무료 등급이 있는 Google Gemini로 교체했다. 같은 "클라우드 LLM"이라도 비용·무료 한도 정책이 다름을 직접 겪었다(예: Gemini Pro는 무료 한도 0이라 Flash로 변경).
 - **막혔던 지점:** transformers 버전(`<5`), tokenizer 오류(`sentencepiece`), 긴 입력 잘림(`truncation`), 짧은 입력 환각(적응형 길이), LLM 메모리(bf16) 등 — 대부분 "에러 메시지를 정확히 읽고 원인을 좁혀가며" 해결했다.
 - **다음에 한다면:** GPU 환경에서 정확 모드를 기본으로 쓰고, 회의록 전용으로 더 다듬은 프롬프트/모델을 적용해보고 싶다.
 ```
